@@ -2,6 +2,7 @@ import sys
 import logging
 import os
 import time
+import random
 from logging import Formatter, FileHandler
 from flask import Flask, render_template, request, jsonify, flash, url_for, redirect
 from flask_uploads import UploadSet, configure_uploads, IMAGES
@@ -68,18 +69,20 @@ def upload():
   return render_template('upload.html')
 
 
-@app.route('/v{}/ocr'.format(_VERSION), methods=["POST"])
+#@app.route('/v{}/ocr'.format(_VERSION), methods=["POST"])
+@app.route('/ocr')
 def ocr():
+  f = 'uploads/img/'
+  output = 'Error'
   try:
-    url = request.json['image_url']
-    if 'jpg' in url:
-      output = process_image(url)
-      return jsonify({"output": output})
-    else:
-      return jsonify({"error": "only .jpg files, please"})
+    f += random.choice(os.listdir('uploads/img/'))
+    output = do_ocr(f)
+    #return jsonify({"output": output})
   except:
-    return jsonify({"error": "Did you mean to send: {'image_url': 'some_jpeg_url'}"})
-
+    print('Error')
+    return 'Error'
+  return json.dumps(output)
+  return jsonify({"output": output})
 
 if not app.debug:
     if not os.path.exists('log/'):
