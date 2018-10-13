@@ -47,17 +47,13 @@ def allowed_files(f):
 @app.route('/upload', methods=['GET', 'POST'])
 def upload():
   # if POST, user has uploaded a photo
-  print('SHIT: ' + str(request.files) + ' ' + str(request.form))
-  print(request.files)
   if request.method == 'POST' and 'photo' in request.files:
     pic = request.files['photo']
     if pic.filename == '':
       # TODO: handle error 
       flash('No File Selected', 'error') 
-      print('IM HERE')
       return redirect(request.url)
     if pic and allowed_files(pic.filename):
-      print('GOT A PHOTO!!!')
       filename = photos.save(request.files['photo'])
       #TODO: create web page for uploading
       return filename
