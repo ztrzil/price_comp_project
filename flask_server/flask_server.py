@@ -82,6 +82,8 @@ def ocr():
 
 
 if not app.debug:
+    if not os.path.exists('log/'):
+        os.makedirs('log/')
     file_handler = FileHandler('log/error.log')
     file_handler.setFormatter(
         Formatter('%(asctime)s %(levelname)s: \
