@@ -1,6 +1,7 @@
 import sys
 import logging
 import os
+import time
 from logging import Formatter, FileHandler
 from flask import Flask, render_template, request, jsonify, flash, url_for, redirect
 from flask_uploads import UploadSet, configure_uploads, IMAGES
@@ -44,6 +45,7 @@ def allowed_files(f):
   return '.' in f and \
     f.rsplit('.',1)[1].lower() in ALLOWED_EXTENSIONS
 
+
 @app.route('/upload', methods=['GET', 'POST'])
 def upload():
   # if POST, user has uploaded a photo
@@ -54,13 +56,18 @@ def upload():
       flash('No File Selected', 'error') 
       return redirect(request.url)
     if pic and allowed_files(pic.filename):
-      filename = photos.save(request.files['photo'])
+      f = request.files['photo']
+      f.filename = str(time.time()).split('.')[0] + '.' + f.filename.split('.')[-1]
+      print('My new file name: ' + f.filename)
+      photos.save(f)
+      #filename = photos.save(request.files['photo'])
       #TODO: create web page for uploading
-      return filename
+      #return pic.filename 
+      return "Picture Uploaded"
   # otherwise, serve the webpage
   return render_template('upload.html')
 
-'''
+
 @app.route('/v{}/ocr'.format(_VERSION), methods=["POST"])
 def ocr():
   try:
@@ -72,7 +79,7 @@ def ocr():
       return jsonify({"error": "only .jpg files, please"})
   except:
     return jsonify({"error": "Did you mean to send: {'image_url': 'some_jpeg_url'}"})
-'''
+
 
 if not app.debug:
     file_handler = FileHandler('log/error.log')
