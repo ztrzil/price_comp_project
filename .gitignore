@@ -3,3 +3,7 @@ flask_server/uploads/img/*
 
 # Ignore log files
 *.log
+
+# Ignore tmp files
+pages/*
+tmp/
