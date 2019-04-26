@@ -6,13 +6,34 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
 import scrapy
 import time
+import json
 import random
+from datetime import datetime, timedelta
 import logging
+import os
 import pandas as pd
+
+DATA_PATH = "data/"
 
 logger = logging.getLogger("crawler_application")
 logger.setLevel(logging.DEBUG)
 
+# create file handler which logs even debug messages
+fh = logging.FileHandler('crawler.log')
+fh.setLevel(logging.DEBUG)
+# create console handler which logs debug messages
+ch = logging.StreamHandler()
+ch.setLevel(logging.DEBUG)
+
+formatter = logging.Formatter("[%(asctime)s] - %(name)s - %(levelname)s - %(message)s", 
+        datefmt="%d/%m/%Y %H:%M:%S")
+
+fh.setFormatter(formatter)
+ch.setFormatter(formatter)
+
+# add the handlers to the logger
+logger.addHandler(fh)
+logger.addHandler(ch)
 
 class Crawler(object):
     useragent = "*"
@@ -31,14 +52,14 @@ class Crawler(object):
         rp.read()
 
         return rp
-
-
     
 
 
 class WalmartCrawler(Crawler):
     # Do I need useragent here?? Or just access it through parent?
-    storeId = "1320"
+    maxUpdateDelay = 3
+    prodIDs = []
+    productData = {}
     navButtons = {
             "Fruits&VegetablesBtn": ["HealthySnackingLink", "OrganicProduceLink", "FreshFruitLink", "FreshVegetablesLink",
                 "FreshPreparedProduceLink", "FreshHerbsLink", "VegetarianProteins&AsianLink", "Nuts,DriedFruit,&HealthySnacksLink"], 
@@ -50,9 +71,47 @@ class WalmartCrawler(Crawler):
             }
 
 
-    def __init__(self, robotsURL):
+    def __init__(self, robotsURL, storeID):
         super().__init__(robotsURL)
-   
+        self.storeID = str(storeID)
+        if not self.__have_updated_products_for_store():
+            self.__fetch_products()
+            self.save_links()
+        else: 
+            print("Not updating products because they have been updated"
+                    " within the given threshold. Lower threshold to update")
+  
+
+    def __have_updated_products_for_store(self):
+        check = False 
+        script_dir = os.path.dirname(__file__) #<-- absolute dir the script is in
+        rel_path = DATA_PATH 
+        abs_file_path = os.path.join(script_dir, rel_path)
+        files = os.listdir(abs_file_path)
+
+        for f in files:
+            if self.storeID in f:
+                # if the file exists, check how old it is so we can determine if we should update
+                fileTime = datetime.fromtimestamp(os.path.getctime(abs_file_path + "/" + f))
+                ageToCheck = datetime.now() - timedelta(days=self.maxUpdateDelay) 
+                logging.debug("Found the product ID file, checking its age")
+                if fileTime >= ageToCheck:
+                    logging.debug("File was created within the max age time frame, no need to update")
+                    check = True
+                break
+
+        return check
+
+
+        if not check: return check
+        # if we have it, make sure it's up to date
+        check = False
+
+    def save_links(self):
+        with open("data/productIDsStore" + self.storeID, "w") as fp:
+            for prod in self.prodIDs:
+                fp.write("%s\n" % prod)
+
 
     def rand_sleep(self):
         return round(random.uniform(10,14), 2)
@@ -64,9 +123,14 @@ class WalmartCrawler(Crawler):
             return ""
 
         productID = product_link.split("/")[-1]
+
         logger.debug("Product ID: {}".format(productID))
-        return "https://grocery.walmart.com/v3/api/products/" + productID +
+
+        return "https://grocery.walmart.com/v3/api/products/" + productID + \
         "?itemFields=all&storeID=" + self.storeID
+
+
+
 
     def _get_department_links(self, driver):
         links = []
@@ -85,7 +149,7 @@ class WalmartCrawler(Crawler):
                 try:
                     btn = driver.find_element_by_css_selector("a[data-automation-id='{}']".format(elem))
                     link = btn.get_attribute("href")
-                    print(link)
+                    logger.debug(link)
                     links.append(link)
                 except:
                     print("That fucked up")
@@ -93,7 +157,26 @@ class WalmartCrawler(Crawler):
         return links
 
 
-    def fetch_products(self, baseURL="https://grocery.walmart.com"):
+    def fetch_product_data(self, prodID):
+        pass
+
+
+    def __get_num_pages(self, driver):
+        try:
+            pagesObj = driver.find_element_by_css_selector("button[class='active']")
+            ariaLabel = pagesObj.get_attribute("aria-label")
+            logger.debug("ariaLabel: {}".format(ariaLabel))
+            if "page" in ariaLabel.lower():
+                numPages = int(ariaLabel.split(" ")[3])
+        except: 
+            logger.debug("Only a single page for this catagory")
+            return 1
+
+        return numPages
+
+
+
+    def __fetch_products(self, baseURL="https://grocery.walmart.com"):
         driver = webdriver.Firefox()
         driver.get(baseURL)
         time.sleep(11) # Give Selenium time to load everything
@@ -103,41 +186,24 @@ class WalmartCrawler(Crawler):
         product_api_links = []
         for link in dept_links:
             driver.get(link)
-            try:
-                product_anchors = driver.find_elements_by_css_selector("a[data-automation-id='link']")
-                for a in product_anchors: 
-                    href = a.get_attribute("href")
-                    api = self._build_api_link(href)
-                    product_api_links.append(api)
-                    product_links.append(href)
-            except:
-                print("That fucked up")
-            time.sleep(self.rand_sleep())
-        print(product_links)
-
-            
-
-        """
-        departmentElements = driver.find_elements_by_class_name("NavigationPanel__aisle___24DGq")
-        for department in departmentElements:
-        #for department in random.shuffle(departmentElements):
-            hover = ActionChains(driver).move_to_element(department)
-            hover.perform()
-            time.sleep(self.rand_sleep())
-            department.click()
-  
-            try:
-                btn = driver.find_element_by_css_selector("a[data-automation-id='HealthySnackingLink']")
-                link = btn.get_attribute("href")
-                print(link)
-            except:
-                print("That fucked up")
-
-        """ 
-#            departmentShelf= driver.find_elements_by_class_name("NavigationPanel__item___2JSjO NavigationPanel__flex___2-fWp")
-#            for shelf in departmentShelf: 
-
-
+            numPages = self.__get_num_pages(driver)
+            for page in range(1, numPages+1, 1):
+                if page > 1: 
+                    nextPageLink = link + "&page=" + str(page)
+                    logger.debug("Getting products from page {}".format(page))
+                    driver.get(nextPageLink)
+                    self.rand_sleep()
+                try:
+                    product_anchors = driver.find_elements_by_css_selector("a[data-automation-id='link']")
+                    for a in product_anchors: 
+                        href = a.get_attribute("href")
+                        product_links.append(href) #TODO: remove this
+                        productID = href.split("/")[-1]
+                        self.prodIDs.append(productID)
+                except:
+                    print("That fucked up")
+                logger.debug("Pulled {} product links so far".format(len(product_links)))
+                time.sleep(self.rand_sleep())
 
         driver.quit()
 
@@ -172,6 +238,11 @@ time.sleep(30)
 get_products_on_page(driver)
 driver.quit()
 """
-wc = WalmartCrawler("http://www.walmart.com/robots.txt")
-wc.fetch_products()
-#wc.fetch_products("https://grocery.walmart.com")
+wc = WalmartCrawler("http://www.walmart.com/robots.txt", "1320")
+#wc.fetch_products()
+"""
+    def _gen_product_ids(self, prodLinks):
+        for prodLink in prodLinks:
+            productID = prodLink.split("/")[-1]
+            self.prodIDs.append(productID)
+"""
